@@ -9,7 +9,7 @@
 
 
 
-**Frontier-CS** is an *unsolved*, *verifiable*, *open-ended*, and *diverse* dataset for evaluating frontier models on challenging computer science problems, ranging from system scheduling optimization to competitive programming–style open challenges.
+**Frontier-CS** is an *unsolved*, *verifiable*, *open-ended*, and *diverse* dataset for evaluating frontier models on challenging computer science problems, ranging from optimization problems in real research to competitive programming–style open challenges.
 
 Whether you are benchmarking LLM agents, evaluating code generation models, or stress-testing reasoning capabilities, Frontier-CS provides a comprehensive suite of tasks designed for rigorous and practical evaluation.
 
