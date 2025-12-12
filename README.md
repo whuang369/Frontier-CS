@@ -48,20 +48,17 @@ export ANTHROPIC_API_KEY="sk-ant-..." # For Claude models
 export GOOGLE_API_KEY="..."           # For Gemini models
 ```
 
-## Core Components
 
 ### Research Problems
 
 Real-world research problems requiring domain expertise in areas including machine learning, operating systems, distributed systems, GPU computing, machine learning, databases, programming languages, and security.
 
-**Quick Start:**
 
 ```bash
 cd research
 
 # Generate solutions with an LLM
-python generate_oneshot_gpt.py --model gpt-4
-
+python generate_oneshot_gpt.py --model <model_name>
 # Run evaluation locally (requires Docker)
 ./main_loop.sh
 
@@ -71,20 +68,52 @@ python scripts/skypilot_per_solution.py --max-concurrent 4
 
 ### Algorithmic Problems
 
-Competitive programming-style problems with automated judging.
-**Quick Start:**
+Competitive programming-style problems with automated judging (see [algorithmic/README.md](algorithmic/README.md) for details).
+
+**Start Judge Server:**
 
 ```bash
-cd algorithmic
-
-# Start judge server (requires Docker)
-docker-compose up -d
-
-# Run benchmark
-python scripts/run_tests.py claude-opus-4
+cd algorithmic && docker-compose up -d
 ```
 
-See [algorithmic/README.md](algorithmic/README.md) for details.
+**Run Benchmark:**
+
+```bash
+python scripts/run_tests.py <model_name>
+```
+
+**Single Evaluation API:**
+
+You can programmatically evaluate solutions using the Python API after setting up the judge server docker, which provides a convenient interface to integrate with your customized agents or evolving frameworks.
+
+```python
+from src.evaluator import FrontierCSEvaluator
+
+# Initialize evaluator
+judge = FrontierCSEvaluator()
+
+# Evaluate a C++ solution
+cpp_code = """
+#include <bits/stdc++.h>
+using namespace std;
+int main() {
+    int n;
+    cin >> n;
+    cout << n * 2 << endl;
+    return 0;
+}
+"""
+
+# Get score (0-100)
+score = judge.evaluate_solution(
+    problem_track="algorithmic",
+    problem_id=1,
+    solution_code=cpp_code
+)
+print(f"Score: {score}")
+```
+
+
 
 ## Repository Structure
 
