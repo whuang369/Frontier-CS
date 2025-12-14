@@ -64,11 +64,28 @@ frontier-eval flash_attn <your_solution.py> --skypilot
 frontier-eval --problems flash_attn,cross_entropy <your_solution.py>
 ```
 
-**Generate Solutions:**
+**Batch Evaluation:**
+
+For evaluating multiple solutions, create a pairs file (`pairs.txt`) mapping solutions to problems:
+
+```
+# pairs.txt format: solution_name:problem_id
+my_flash_attn_v1:flash_attn
+my_flash_attn_v2:flash_attn
+my_cross_entropy:cross_entropy
+```
+
+Then run batch evaluation:
 
 ```bash
-cd research
-python generate_solutions.py --model <model_name>
+# Evaluate all pairs
+frontier-eval batch --pairs-file pairs.txt
+
+# Resume interrupted evaluation
+frontier-eval batch --pairs-file pairs.txt --resume
+
+# Check status
+frontier-eval batch --status --results-dir results/batch
 ```
 
 ### Algorithmic Problems
