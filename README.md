@@ -59,11 +59,19 @@ pip install -e .
 </p>
 
 ```bash
-# Run the example solution
-frontier-eval <PROBLEM_ID> examples/<PROBLEM_ID>_solution.py
-```
+# Start the judge server
+cd algorithmic && docker compose up -d
+# Run the example solution (GPT-5 Thinking Solution)
+frontier-eval --algorithmic 0 algorithmic/problems/0/examples/gpt5.cpp
 
-<!-- TODO: Replace <PROBLEM_ID> with actual problem, add example solution to examples/ -->
+# Run the example solution (Human Expert Solution)
+frontier-eval --algorithmic 0 algorithmic/problems/0/examples/reference.cpp
+
+# Try you own solution!
+frontier-eval --algorithmic 0 <your_solution.cpp>
+```
+See [Algorithmic-Problem-0](algorithmic/problems/0/statement.txt) for the full problem description.
+
 
 ### Research Problems
 
