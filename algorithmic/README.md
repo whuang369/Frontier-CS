@@ -1,4 +1,4 @@
-## Problem Structure
+### Problem Structure
 
 Each problem in `problems/{id}/` contains:
 
@@ -13,11 +13,9 @@ problems/{id}/
 └── chk.cc / interactor.cc   # Checker or interactor
 ```
 
----
+### Quick Start
 
-## Quick Start
-
-### 1. Start Judge Server
+#### 1. Start Judge Server
 
 ```bash
 docker-compose up --build -d   # First time
@@ -26,27 +24,26 @@ docker-compose up -d           # Subsequent runs
 
 Judge runs at `http://localhost:8081`.
 
-### 2. Run Benchmark for LLMs
+#### 2. Run Benchmark for LLMs
 
 ```bash
 python scripts/run_tests.py <model_name>
 ```
 
-**Supported models:**
+*Supported models:*
 - `gpt`
 - `claude`, `claude-opus`, `claude-opus-4-5`, `claude-sonnet-4-5`
 - `gemini`, `gemini3`
 - `Grok`
 
-### 3. View Results
+#### 3. View Results
 
 Results saved to `scripts/solutions/`:
 - `{problem_id}_{model}_solution.cpp`: Generated code
 - `{problem_id}_{model}_result.json`: Judge result with score
 
----
 
-## How It Works
+### How It Works
 
 1. **Fetch problem** statement from judge API
 2. **Generate solution** via LLM (C++ code)
@@ -54,9 +51,8 @@ Results saved to `scripts/solutions/`:
 4. **Poll** for result
 5. **Score** based on test case pass rate
 
----
 
-## Judge API
+### Judge API
 
 | Endpoint | Description |
 |----------|-------------|
@@ -65,9 +61,8 @@ Results saved to `scripts/solutions/`:
 | `POST /submit` | Submit solution |
 | `GET /result/{sid}` | Get submission result |
 
----
 
-## Customized Problems
+### Customized Problems
 
 1. Create `problems/{id}/` directory
 2. Add required files:
@@ -79,11 +74,10 @@ Results saved to `scripts/solutions/`:
 
 3. Restart judge to pick up new problems
 
----
 
-## Configuration
+### Judge Sever Configuration
 
-### `config.yaml`
+#### config.yaml
 
 ```yaml
 time_limit: 1000        # ms
@@ -92,7 +86,7 @@ test_count: 10
 checker: chk.cc         # or interactor: interactor.cc
 ```
 
-### `docker-compose.yml`
+#### docker-compose.yml
 
 ```yaml
 environment:
