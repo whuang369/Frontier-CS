@@ -49,19 +49,27 @@ export GOOGLE_API_KEY="..."           # For Gemini models
 
 Real-world research problems requiring domain expertise in areas including machine learning, operating systems, distributed systems, GPU computing, databases, programming languages, and security.
 
+**CLI Evaluation:**
+
+```bash
+# List available problems
+frontier-eval --list
+
+# Evaluate a single problem (requires Docker)
+frontier-eval flash_attn solution.py
+
+# Evaluate with SkyPilot (cloud)
+frontier-eval flash_attn solution.py --skypilot
+
+# Evaluate multiple problems
+frontier-eval --problems flash_attn,cross_entropy solution.py
+```
+
+**Generate Solutions:**
 
 ```bash
 cd research
-
-# Generate solutions with an LLM
 python generate_oneshot_gpt.py --model <model_name>
-
-# Run evaluation locally (requires Docker)
-chmod +x ./main_loop.sh
-./main_loop.sh
-
-# Or run on cloud (requires SkyPilot)
-python scripts/skypilot_per_solution.py --max-concurrent 4
 ```
 
 ### Algorithmic Problems
@@ -74,41 +82,37 @@ Competitive programming-style problems with automated judging (see [algorithmic/
 cd algorithmic && docker-compose up -d
 ```
 
-**Run Benchmark:**
+**CLI Evaluation:**
 
 ```bash
-python scripts/run_tests.py <model_name>
+frontier-eval --algorithmic 1 solution.cpp
 ```
 
-**Simple Evaluation API:**
+### Evaluation API
 
-You can programmatically evaluate solutions using the Python API after setting up the judge server docker, which provides a convenient interface to integrate with your customized agents or evolving frameworks.
+Unified Python API for evaluating both algorithmic and research problems:
 
 ```python
-from src.evaluator import FrontierCSEvaluator
+from frontier_cs import FrontierCSEvaluator
 
-# Initialize evaluator
-judge = FrontierCSEvaluator()
+evaluator = FrontierCSEvaluator()
 
-# Evaluate a C++ solution
-cpp_code = """
-#include <bits/stdc++.h>
-using namespace std;
-int main() {
-    int n;
-    cin >> n;
-    cout << n * 2 << endl;
-    return 0;
-}
-"""
+# Algorithmic problem (requires judge server)
+result = evaluator.evaluate("algorithmic", problem_id=1, code=cpp_code)
+print(f"Score: {result.score}")
 
-# Get score (0-100)
-score = judge.evaluate_solution(
-    problem_track="algorithmic",
-    problem_id=1,
-    solution_code=cpp_code
-)
-print(f"Score: {score}")
+# Research problem (requires Docker)
+result = evaluator.evaluate("research", problem_id="flash_attn", code=py_code)
+print(f"Score: {result.score}")
+
+# Research problem with SkyPilot (cloud)
+result = evaluator.evaluate("research", problem_id="flash_attn", code=py_code,
+                           backend="skypilot")
+
+# Batch evaluation
+results = evaluator.evaluate_batch("research",
+                                  problem_ids=["flash_attn", "cross_entropy"],
+                                  code=py_code)
 ```
 
 ## Submit Your Results

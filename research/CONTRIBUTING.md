@@ -153,25 +153,101 @@ research/poc_generation/heap_buffer_overflow/arvo_47101
 
 ## Running Evaluations
 
-### Local Evaluation
+### Single Problem Evaluation
 
 ```bash
-cd research
-./main_loop.sh
+# Evaluate a single solution file
+frontier-eval flash_attn solution.py
+
+# With SkyPilot (cloud)
+frontier-eval flash_attn solution.py --skypilot
 ```
 
-Reads `pairs.txt` for solution-problem pairs, runs in Docker containers.
-
-### Cloud Evaluation (SkyPilot)
+### Batch Evaluation
 
 ```bash
-python scripts/skypilot_per_solution.py --max-concurrent 4
+# From pairs file
+frontier-eval batch --pairs-file pairs.txt --results-dir results/
+
+# From problem list × model
+frontier-eval batch --model gpt-5 --problems flash_attn,cross_entropy
+
+# With SkyPilot and parallel execution
+frontier-eval batch --pairs-file pairs.txt --skypilot --max-concurrent 4
+
+# Resume interrupted evaluation
+frontier-eval batch --resume --results-dir results/
 ```
 
-Options:
-- `--max-concurrent N`: Parallel machines
-- `--region`, `--cpus`, `--accelerators`: Override resources
-- `--dry-run`: Prepare without launching
+### Bucket Storage (Recommended for SkyPilot)
+
+When running batch evaluations with SkyPilot, use bucket storage for reliable result persistence:
+
+```bash
+frontier-eval batch --pairs-file pairs.txt --skypilot \
+    --bucket-url s3://my-bucket/frontier-results \
+    --max-concurrent 4
+```
+
+Each worker writes results directly to bucket as `{solution}__{problem}.json`.
+
+### Batch Operations
+
+#### First Run
+
+```bash
+frontier-eval batch --pairs-file pairs.txt --skypilot \
+    --bucket-url s3://my-bucket/frontier-results \
+    --max-concurrent 4
+```
+
+#### Retry Failed Pairs
+
+```bash
+# Retry all pairs with status=error or status=timeout
+frontier-eval batch --retry-failed --skypilot \
+    --bucket-url s3://my-bucket/frontier-results \
+    --results-dir results/
+```
+
+#### Add New Problems
+
+When `pairs.txt` or `problems.txt` is updated with new entries:
+
+```bash
+# Only evaluate pairs not yet in results
+frontier-eval batch --pairs-file pairs.txt --skypilot \
+    --bucket-url s3://my-bucket/frontier-results \
+    --resume
+
+# Or use --complete with problems × models expansion
+frontier-eval batch --complete \
+    --problems-file problems.txt \
+    --models-file models.txt \
+    --bucket-url s3://my-bucket/frontier-results
+```
+
+#### Sync and Report Only
+
+```bash
+# Download results from bucket, generate reports, no evaluation
+frontier-eval batch --sync-bucket \
+    --bucket-url s3://my-bucket/frontier-results \
+    --results-dir results/
+```
+
+#### Check Status
+
+```bash
+frontier-eval batch --status --results-dir results/
+frontier-eval batch --report --results-dir results/
+```
+
+#### Export Failed Pairs
+
+```bash
+frontier-eval batch --export-failed failed.txt --results-dir results/
+```
 
 ### Generating LLM Solutions
 
@@ -205,12 +281,18 @@ gpt5_flash_attn:research/flash_attn
 claude_gemm_squares:research/gemm_optimization/squares
 ```
 
-### `docker_images.txt`
-Custom Docker images per problem:
-```
-# Format: problem=image,gpu_flag,dind_flag
-gemm_optimization=andylizf/triton-tlx:tlx-nv-cu122,gpu
-poc_generation=python:3.11-slim-trixie,nogpu,dind
+### `config.yaml` (per problem)
+Each problem has a `config.yaml` with runtime configuration:
+```yaml
+tag: hpc
+runtime:
+  docker:
+    image: andylizf/triton-tlx:tlx-nv-cu122
+    gpu: true
+    dind: false  # Docker-in-Docker for security problems
+  resources:
+    accelerators: "L4:1"
+    cpus: "8+"
 ```
 
 ### `models.txt`
@@ -248,39 +330,34 @@ Rebuilds CSV, detects missing results, computes averages per model.
 
 ---
 
-## Workflow: Handling Failures
-
-`results_sync.py` generates two files for re-running failed/missing evaluations:
-
-### `skipped_failed_solutions.txt`
-Solutions missing from `solutions/` directory. Regenerate them:
-```bash
-python generate_oneshot_gpt.py --solutions-file skipped_failed_solutions.txt
-```
-
-### `skypilot_pending_pairs.txt`
-Solution-problem pairs without result files. Run evaluations:
-```bash
-python scripts/skypilot_per_solution.py --pairs-file skypilot_pending_pairs.txt --max-concurrent 4
-```
-
-### Typical Workflow
+## Workflow: Typical Evaluation Cycle
 
 ```bash
 # 1. Generate solutions
 python generate_oneshot_gpt.py --model gpt-5
 
-# 2. Run evaluations
-python scripts/skypilot_per_solution.py --max-concurrent 4
+# 2. Run batch evaluation with bucket storage
+frontier-eval batch --pairs-file pairs.txt --skypilot \
+    --bucket-url s3://my-bucket/frontier-results \
+    --max-concurrent 4
 
-# 3. Sync results (generates skipped/pending files)
-python scripts/results_sync.py --results-dir results
+# 3. Check results
+frontier-eval batch --status --results-dir results/
+frontier-eval batch --report --results-dir results/
 
-# 4. Regenerate failed solutions
-python generate_oneshot_gpt.py --solutions-file skipped_failed_solutions.txt
+# 4. Retry failed pairs
+frontier-eval batch --retry-failed --skypilot \
+    --bucket-url s3://my-bucket/frontier-results
 
-# 5. Re-run pending evaluations
-python scripts/skypilot_per_solution.py --pairs-file skypilot_pending_pairs.txt
+# 5. Add new problems (update pairs.txt, then resume)
+frontier-eval batch --pairs-file pairs.txt --skypilot \
+    --bucket-url s3://my-bucket/frontier-results \
+    --resume
+
+# 6. Sync results from bucket (from any machine)
+frontier-eval batch --sync-bucket \
+    --bucket-url s3://my-bucket/frontier-results \
+    --results-dir results/
 ```
 
 ---
@@ -299,42 +376,62 @@ If the last line is not numeric, the result is marked as error.
 
 ---
 
+## CLI Reference
+
+The `frontier-eval` CLI provides all evaluation functionality.
+
+### Commands
+
+```bash
+# Single problem evaluation
+frontier-eval <problem_id> <solution.py>
+frontier-eval flash_attn solution.py --skypilot
+
+# Batch evaluation
+frontier-eval batch --pairs-file pairs.txt
+frontier-eval batch --model gpt-5 --problems flash_attn,cross_entropy
+frontier-eval batch --status --results-dir results/
+
+# List problems
+frontier-eval --list
+frontier-eval --show flash_attn
+```
+
+### Python API
+
+```python
+from frontier_cs import FrontierCSEvaluator
+from frontier_cs.batch import BatchEvaluator
+
+# Single evaluation
+evaluator = FrontierCSEvaluator()
+result = evaluator.evaluate("research", "flash_attn", code=solution_code)
+
+# Batch evaluation
+batch = BatchEvaluator(results_dir="results/")
+batch.evaluate_model("gpt-5", problems=["flash_attn", "cross_entropy"])
+```
+
 ## Scripts Reference
 
-All scripts are in `research/scripts/`.
-
-### Core Scripts
+Scripts in `research/`:
 
 | Script | Description |
 |--------|-------------|
-| `skypilot_per_solution.py` | Run evaluations on SkyPilot (cloud) |
-| `results_sync.py` | Sync results, rebuild CSV, generate pending/failed lists |
-| `check_solution_matrix.py` | Verify solutions/ directory coverage |
-
-### Generation & Submission
-
-| Script | Description |
-|--------|-------------|
-| `generate_oneshot_gpt.py` | Generate solutions using LLMs (in parent dir) |
-| `submit.py` | Submit solution to evaluation server |
-| `fetch.py` | Fetch evaluation result from server |
-| `setup.py` | Upload problem to evaluation server |
-
-### Utilities
-
-| Script | Description |
-|--------|-------------|
-| `extract_failed_skipped.py` | Parse generation logs to extract failed/skipped solutions |
-| `config_loader.py` | Internal library for loading config.yaml |
+| `generate_oneshot_gpt.py` | Generate solutions using LLMs |
+| `scripts/results_sync.py` | Rebuild CSV from result files |
+| `scripts/check_solution_matrix.py` | Verify solutions/ directory coverage |
+| `scripts/submit.py` | Submit solution to evaluation server |
+| `scripts/fetch.py` | Fetch evaluation result from server |
 
 ### Usage Examples
 
 ```bash
+# Generate solutions for a model
+python generate_oneshot_gpt.py --model gpt-5
+
 # Check solution coverage
 python scripts/check_solution_matrix.py
-
-# Extract failures from generation log
-python scripts/extract_failed_skipped.py gen_logs.md
 
 # Bulk submit solutions
 python scripts/submit.py --submissions submissions/ --out sid_map.json

@@ -1,2 +1,6 @@
 tag: security
 variant_id: poc_generation_heap_buffer_overflow_oss_fuzz_42537168
+runtime:
+  docker:
+    image: python:3.11-slim-trixie
+    dind: true

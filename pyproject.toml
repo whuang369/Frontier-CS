@@ -1,7 +1,7 @@
 [project]
 name = "frontier-cs"
 version = "0.1.0"
-description = "Add your description here"
+description = "Evaluation framework for Frontier-CS problems"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.74.0",
@@ -11,7 +11,18 @@ dependencies = [
     "numpy==2.3.4",
     "openai>=2.8.1",
     "python-dotenv>=1.2.1",
+    "pyyaml>=6.0",
     "requests>=2.32.5",
     "skypilot>=0.10.5",
     "tqdm>=4.67.1",
 ]
+
+[project.scripts]
+frontier-eval = "frontier_cs.cli:main"
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -1,0 +1,460 @@
+"""
+SkyPilot runner for research problems.
+
+Runs evaluations on cloud VMs via SkyPilot.
+
+Supports two result storage modes:
+- scp (legacy): Fetch results via scp after job completes
+- bucket: Write results directly to S3/GCS bucket during job execution
+"""
+
+import hashlib
+import json
+import shutil
+import subprocess
+import tempfile
+import textwrap
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Tuple
+
+from .base import Runner, EvaluationResult, EvaluationStatus
+from ..config import load_runtime_config
+
+
+def _sanitize_name(name: str) -> str:
+    """Sanitize a name for use as cluster name."""
+    cleaned = []
+    valid = "abcdefghijklmnopqrstuvwxyz0123456789-"
+    last_dash = False
+    for ch in name.lower():
+        if ch in valid:
+            cleaned.append(ch)
+            last_dash = ch == "-"
+        else:
+            if not last_dash:
+                cleaned.append("-")
+                last_dash = True
+    return "".join(cleaned).strip("-") or "job"
+
+
+class SkyPilotRunner(Runner):
+    """
+    Runner for research problems using SkyPilot.
+
+    Executes evaluations on cloud VMs with support for:
+    - Auto-scaling resources based on problem requirements
+    - GPU provisioning
+    - Custom Docker images (from config.yaml)
+    """
+
+    DEFAULT_CLOUD = "gcp"
+    DEFAULT_CPUS = "8+"
+    DEFAULT_MEMORY = "16+"
+    DEFAULT_DISK_SIZE = 50
+    DEFAULT_GPU = "L4:1"
+    DEFAULT_TIMEOUT = 1800  # 30 minutes
+
+    def __init__(
+        self,
+        base_dir: Optional[Path] = None,
+        cloud: str = DEFAULT_CLOUD,
+        region: Optional[str] = None,
+        keep_cluster: bool = False,
+        bucket_url: Optional[str] = None,
+    ):
+        """
+        Initialize SkyPilotRunner.
+
+        Args:
+            base_dir: Base directory of Frontier-CS repo
+            cloud: Cloud provider (gcp, aws, azure)
+            region: Cloud region (optional)
+            keep_cluster: Keep cluster running after evaluation
+            bucket_url: Optional bucket URL for result storage (s3://... or gs://...)
+                       If provided, results are written to bucket instead of fetched via scp
+        """
+        self.base_dir = base_dir or self._find_base_dir()
+        self.research_dir = self.base_dir / "research"
+        self.cloud = cloud
+        self.region = region
+        self.keep_cluster = keep_cluster
+        self.bucket_url = bucket_url
+
+    def _find_base_dir(self) -> Path:
+        """Find the Frontier-CS base directory."""
+        candidates = [
+            Path(__file__).parents[4],
+            Path.cwd(),
+            Path.cwd().parent,
+        ]
+        for candidate in candidates:
+            if (candidate / "research").is_dir() and (candidate / "pyproject.toml").exists():
+                return candidate
+        raise RuntimeError("Could not find Frontier-CS base directory")
+
+    def get_problem_path(self, problem_id: str) -> Path:
+        """Get the path to a research problem directory."""
+        return self.research_dir / problem_id
+
+    def evaluate(
+        self,
+        problem_id: str,
+        solution_code: str,
+        *,
+        timeout: Optional[int] = None,
+        solution_id: Optional[str] = None,
+    ) -> EvaluationResult:
+        """
+        Evaluate a solution using SkyPilot.
+
+        Args:
+            problem_id: Problem ID (e.g., "flash_attn")
+            solution_code: Python solution code
+            timeout: Optional timeout in seconds
+            solution_id: Optional solution ID for bucket storage (forms pair_id with problem_id)
+
+        Returns:
+            EvaluationResult with score and status
+        """
+        problem_path = self.get_problem_path(problem_id)
+
+        if not problem_path.exists():
+            return EvaluationResult(
+                problem_id=problem_id,
+                status=EvaluationStatus.ERROR,
+                message=f"Problem not found: {problem_path}",
+            )
+
+        # Create temp directory with solution
+        with tempfile.TemporaryDirectory(prefix="frontier_sky_") as temp_dir:
+            temp_path = Path(temp_dir)
+            solution_path = temp_path / "solution.py"
+            solution_path.write_text(solution_code, encoding="utf-8")
+
+            return self._run_evaluation(problem_id, problem_path, solution_path, timeout, solution_id)
+
+    def evaluate_file(
+        self,
+        problem_id: str,
+        solution_path: Path,
+        *,
+        timeout: Optional[int] = None,
+        solution_id: Optional[str] = None,
+    ) -> EvaluationResult:
+        """Evaluate a solution file using SkyPilot."""
+        if not solution_path.exists():
+            return EvaluationResult(
+                problem_id=problem_id,
+                status=EvaluationStatus.ERROR,
+                message=f"Solution file not found: {solution_path}",
+            )
+
+        problem_path = self.get_problem_path(problem_id)
+        if not problem_path.exists():
+            return EvaluationResult(
+                problem_id=problem_id,
+                status=EvaluationStatus.ERROR,
+                message=f"Problem not found: {problem_path}",
+            )
+
+        return self._run_evaluation(problem_id, problem_path, solution_path, timeout, solution_id)
+
+    def _run_evaluation(
+        self,
+        problem_id: str,
+        problem_path: Path,
+        solution_path: Path,
+        timeout: Optional[int],
+        solution_id: Optional[str] = None,
+    ) -> EvaluationResult:
+        """Run evaluation on SkyPilot."""
+        import sky
+
+        start_time = time.time()
+
+        # Load config from config.yaml
+        runtime_config = load_runtime_config(problem_path)
+        docker_config = runtime_config.docker
+        res = runtime_config.resources
+
+        # Determine resources
+        accelerators = res.accelerators
+        if not accelerators and docker_config.gpu:
+            accelerators = self.DEFAULT_GPU
+        if not accelerators and runtime_config.requires_gpu:
+            accelerators = self.DEFAULT_GPU
+
+        # Determine timeout
+        effective_timeout = timeout or runtime_config.timeout_seconds or self.DEFAULT_TIMEOUT
+
+        # Create cluster name
+        digest = hashlib.md5(problem_id.encode()).hexdigest()[:8]
+        cluster_name = _sanitize_name(f"eval-{problem_id}-{digest}")[:63]
+
+        # Build pair_id for bucket storage
+        pair_id = f"{solution_id}:{problem_id}" if solution_id else None
+
+        # Create workspace and task
+        with tempfile.TemporaryDirectory(prefix="frontier_sky_workspace_") as workspace_dir:
+            workspace = Path(workspace_dir)
+            file_mounts = self._setup_mounts(workspace, problem_id, problem_path, solution_path)
+
+            # Add bucket mount if using bucket storage
+            if self.bucket_url:
+                results_url = f"{self.bucket_url.rstrip('/')}/results"
+                file_mounts["~/results_bucket"] = {
+                    "source": results_url,
+                    "mode": "MOUNT",
+                }
+
+            # Build SkyPilot resources
+            resources = sky.Resources(
+                cloud=res.cloud or self.cloud,
+                region=res.region or self.region,
+                cpus=res.cpus or self.DEFAULT_CPUS,
+                memory=res.memory or self.DEFAULT_MEMORY,
+                accelerators=accelerators,
+                disk_size=res.disk_size or self.DEFAULT_DISK_SIZE,
+                instance_type=res.instance_type,
+                image_id=res.image_id,
+            )
+
+            # Build task
+            run_script = self._get_run_script(
+                problem_id,
+                docker_config.image,
+                docker_config.gpu,
+                docker_config.dind,
+                pair_id=pair_id if self.bucket_url else None,
+            )
+            task = sky.Task(
+                name=cluster_name,
+                setup=self._get_setup_script(),
+                run=run_script,
+                file_mounts=file_mounts,
+            )
+            task.set_resources(resources)
+
+            # Launch and wait
+            try:
+                request_id = sky.launch(task, cluster_name=cluster_name)
+                result = sky.stream_and_get(request_id)
+
+                job_id = result[0] if isinstance(result, tuple) and len(result) > 0 else None
+                handle = result[1] if isinstance(result, tuple) and len(result) > 1 else None
+
+                # Wait for completion
+                exit_code = 0
+                if job_id is not None:
+                    exit_code = sky.tail_logs(cluster_name, job_id, follow=True)
+
+                duration = time.time() - start_time
+
+                if exit_code != 0:
+                    return EvaluationResult(
+                        problem_id=problem_id,
+                        status=EvaluationStatus.ERROR,
+                        message=f"Remote job failed with exit code {exit_code}",
+                        duration_seconds=duration,
+                    )
+
+                # Fetch results (bucket mode writes directly, scp mode fetches after)
+                if self.bucket_url:
+                    # Results already written to bucket by run script
+                    # Return placeholder - caller should read from bucket
+                    return EvaluationResult(
+                        problem_id=problem_id,
+                        status=EvaluationStatus.SUCCESS,
+                        message="Results written to bucket",
+                        duration_seconds=duration,
+                    )
+                else:
+                    # Legacy scp mode
+                    score, logs = self._fetch_results(cluster_name, handle)
+                    return EvaluationResult(
+                        problem_id=problem_id,
+                        score=score,
+                        status=EvaluationStatus.SUCCESS,
+                        logs=logs,
+                        duration_seconds=duration,
+                    )
+
+            except Exception as e:
+                return EvaluationResult(
+                    problem_id=problem_id,
+                    status=EvaluationStatus.ERROR,
+                    message=str(e),
+                    duration_seconds=time.time() - start_time,
+                )
+
+            finally:
+                if not self.keep_cluster:
+                    try:
+                        down_request = sky.down(cluster_name)
+                        sky.stream_and_get(down_request)
+                    except Exception:
+                        pass
+
+    def _setup_mounts(
+        self,
+        workspace: Path,
+        problem_id: str,
+        problem_path: Path,
+        solution_path: Path,
+    ) -> dict:
+        """Set up file mounts for SkyPilot."""
+        mounts = {}
+        remote_base = "~/sky_workdir"
+
+        # Mount problem
+        mounts[f"{remote_base}/research/{problem_id}"] = str(problem_path.resolve())
+
+        # Mount common directories
+        parts = problem_id.split("/")
+        for i in range(1, len(parts)):
+            parent = "/".join(parts[:i])
+            common_dir = self.research_dir / parent / "common"
+            if common_dir.is_dir():
+                mounts[f"{remote_base}/research/{parent}/common"] = str(common_dir.resolve())
+
+        # Mount solution
+        solution_dir = workspace / "solution"
+        solution_dir.mkdir(parents=True)
+        shutil.copy2(solution_path, solution_dir / "solution.py")
+        mounts[f"{remote_base}/solution"] = str(solution_dir.resolve())
+
+        return mounts
+
+    def _get_setup_script(self) -> str:
+        """Get setup script for SkyPilot task."""
+        return textwrap.dedent("""\
+            set -euo pipefail
+
+            # Install Docker
+            if ! command -v docker &>/dev/null; then
+                curl -fsSL https://get.docker.com | sudo sh
+                sudo usermod -aG docker $USER
+                sudo systemctl start docker
+            fi
+
+            # Make scripts executable
+            find ~/sky_workdir -name '*.sh' -exec chmod +x {} \\; 2>/dev/null || true
+        """)
+
+    def _get_run_script(
+        self,
+        problem_id: str,
+        docker_image: str,
+        gpu: bool,
+        dind: bool,
+        pair_id: Optional[str] = None,
+    ) -> str:
+        """Get run script for SkyPilot task."""
+        gpu_flags = "--gpus all" if gpu else ""
+        dind_flags = '-v /var/run/docker.sock:/var/run/docker.sock' if dind else ""
+
+        # Build bucket write command if pair_id is provided
+        if pair_id:
+            # Escape pair_id for shell and generate safe filename
+            safe_pair_id = pair_id.replace(":", "__")
+            bucket_write = textwrap.dedent(f'''
+            # Write result to bucket as JSON
+            SCORE=$(cat /results/score.txt 2>/dev/null || echo "")
+            TIMESTAMP=$(date -Is)
+            cat > ~/results_bucket/{safe_pair_id}.json << RESULT_EOF
+            {{
+              "pair_id": "{pair_id}",
+              "score": ${{SCORE:-null}},
+              "status": "success",
+              "message": null,
+              "duration_seconds": $SECONDS,
+              "timestamp": "$TIMESTAMP",
+              "logs": null
+            }}
+            RESULT_EOF
+            echo "Result written to bucket: {safe_pair_id}.json"
+            ''')
+        else:
+            bucket_write = ""
+
+        return textwrap.dedent(f"""\
+            set -euo pipefail
+            SECONDS=0
+            cd ~/sky_workdir
+
+            # Create results directory
+            mkdir -p results
+
+            # Run evaluation in Docker
+            docker run --rm {gpu_flags} {dind_flags} \\
+                -v "$(pwd):/workspace:ro" \\
+                -v "$(pwd)/results:/results" \\
+                -w /work \\
+                "{docker_image}" \\
+                bash -c '
+                    set -euo pipefail
+                    cp -r /workspace/* /work/
+                    cd /work/research/{problem_id}
+
+                    # Setup environment
+                    if [ -f set_up_env.sh ]; then
+                        chmod +x set_up_env.sh
+                        ./set_up_env.sh
+                    fi
+
+                    # Copy solution
+                    mkdir -p /work/execution_env/solution_env
+                    cp /work/solution/solution.py /work/execution_env/solution_env/
+
+                    # Run evaluation
+                    chmod +x evaluate.sh
+                    ./evaluate.sh | tee /results/output.txt
+
+                    # Extract score (last numeric line)
+                    grep -E "^-?[0-9]+\\.?[0-9]*$" /results/output.txt | tail -1 > /results/score.txt || true
+                '
+            {bucket_write}
+        """)
+
+    def _fetch_results(self, cluster_name: str, handle: object) -> Tuple[Optional[float], Optional[str]]:
+        """Fetch results from remote cluster via scp."""
+        score = None
+        logs = None
+
+        with tempfile.TemporaryDirectory(prefix="frontier_results_") as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Try to scp results
+            try:
+                result = subprocess.run(
+                    ["scp", "-r", "-o", "StrictHostKeyChecking=no",
+                     f"{cluster_name}:~/sky_workdir/results", str(temp_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+
+                if result.returncode == 0:
+                    results_dir = temp_path / "results"
+
+                    # Read score
+                    score_file = results_dir / "score.txt"
+                    if score_file.exists():
+                        score_text = score_file.read_text().strip()
+                        if score_text:
+                            try:
+                                score = float(score_text)
+                            except ValueError:
+                                pass
+
+                    # Read logs
+                    output_file = results_dir / "output.txt"
+                    if output_file.exists():
+                        logs = output_file.read_text()
+
+            except (subprocess.TimeoutExpired, Exception):
+                pass
+
+        return score, logs

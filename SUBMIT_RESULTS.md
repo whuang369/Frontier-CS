@@ -136,13 +136,14 @@ class Solution:
 Before submitting, you can verify your solutions locally:
 
 ```bash
-cd research
+# Evaluate a single solution
+frontier-eval flash_attn solution.py
 
-# Run evaluation for a specific problem
-./main_loop.sh  # Configure pairs.txt first
+# Batch evaluation with progress tracking
+frontier-eval batch --pairs-file pairs.txt --results-dir results/
 
-# Or use SkyPilot for cloud evaluation
-python scripts/skypilot_per_solution.py --max-concurrent 4
+# Batch evaluation with SkyPilot (cloud)
+frontier-eval batch --pairs-file pairs.txt --skypilot --max-concurrent 4
 ```
 
 ## How to Submit

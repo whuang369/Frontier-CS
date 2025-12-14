@@ -1,2 +1,6 @@
 tag: security
 variant_id: poc_generation_stack_buffer_overflow_arvo_44034
+runtime:
+  docker:
+    image: python:3.11-slim-trixie
+    dind: true

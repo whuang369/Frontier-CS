@@ -30,10 +30,7 @@ from test_scripts.llm_interface import (
     Grok,
 )
 
-# Add scripts directory to path for config_loader
-import sys as _sys
-_sys.path.insert(0, str(Path(__file__).parent / "scripts"))
-from config_loader import load_runtime_config, get_effective_gpu_type
+from frontier_cs.config import load_runtime_config, get_effective_gpu_type
 
 PREPARE_ENV_TEMPLATE = """#!/usr/bin/env bash
 set -euo pipefail
