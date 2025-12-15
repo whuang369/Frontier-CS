@@ -6,15 +6,16 @@
 #include <string>
 #include "testlib.h"
 using namespace std;
+
 enum {
-    INVALID_INPUT = -1,        // Judge input invalid (internal use only)
-    INVALID_T_LENGTH = 1,      // t length != N
-    INVALID_T_CHAR   = 2,      // t contains illegal characters
-    WRONG_T          = 3,      // t does not match true value
-    INVALID_S_LENGTH = 4,      // s length != 2N+1
-    INVALID_S_CHAR   = 5,      // s contains illegal characters
-    QUERY_LIMIT_EXCEEDED = 6,  // query count > 1000
-    INVALID_OUTPUT   = 9,      // player output first char is neither '?' nor '!'
+    INVALID_INPUT = -1,
+    INVALID_T_LENGTH = 1,
+    INVALID_T_CHAR   = 2,
+    WRONG_T          = 3,
+    INVALID_S_LENGTH = 4,
+    INVALID_S_CHAR   = 5,
+    QUERY_LIMIT_EXCEEDED = 6,
+    INVALID_OUTPUT   = 9,
 };
 
 const int N_MAX = 8000;
@@ -26,20 +27,27 @@ std::string T;
 int QUERY_COUNT = 0;
 
 double score(int x){
-    if(x<=900)return 1;
-    if(x>5000)return 0;
-    return (5000.0-x)/(5000.0-900.0);
+    if (x <= 900) return 1.0;
+    if (x >= 5000) return 0.0;
+    return (5000.0 - x) / (5000.0 - 900.0);
+}
+
+double score_unbounded(int x){
+    if (x <= 0) return 1.0;
+    if (x >= 5000) return 0.0;
+    return (5000.0 - x) / 5000.0;
 }
 
 [[noreturn]] void wrong(const int num) {
-    // Write a flag to player program (avoid blocking read), then terminate via testlib
     fprintf(stdout, "-1\n");
     fflush(stdout);
     quitf(_wa, "translate:wrong\nWrong Answer [%d]\n", num);
 }
 
 [[noreturn]] void ok() {
-    quitp(score(QUERY_COUNT), "Ratio: %.4f , Queries: %d", score(QUERY_COUNT), QUERY_COUNT);
+    double r  = score(QUERY_COUNT);
+    double ru = score_unbounded(QUERY_COUNT);
+    quitp(r, "Ratio: %.4f , RatioUnbounded: %.4f , Queries: %d", r, ru, QUERY_COUNT);
 }
 
 int query(std::string s) {
@@ -55,19 +63,16 @@ int query(std::string s) {
     }
     QUERY_COUNT++;
 
-    // Convert '0'/'1' to 0/1
     for (char &c : s) c -= '0';
 
-    // Calculate slot outputs from high to low and fold to switch i (XOR trick for OFF/ON behaviors)
     for (int i = N - 1; i >= 0; --i) {
         const int u = U[i], v = V[i];
         if (T[i] == '&') {
             s[i] ^= (s[u] & s[v]);
-        } else { // '|'
+        } else {
             s[i] ^= (s[u] | s[v]);
         }
     }
-    // Return final output of switch 0
     return s[0];
 }
 
@@ -87,25 +92,21 @@ void answer(std::string t) {
 int main(int argc, char* argv[]) {
     registerInteraction(argc, argv);
 
-    // ---------- Read judge input (internal use only) ----------
-    N = inf.readInt();     // 1..8000
-    R = inf.readInt();     // 1..min(N,120)
+    N = inf.readInt();
+    R = inf.readInt();
     if (N < 1 || N > N_MAX) {
         wrong(INVALID_INPUT);
     }
-    cout<<N<<" "<<R<<endl;
+    cout << N << " " << R << endl;
+
     U.resize(N);
     V.resize(N);
     for (int i = 0; i < N; ++i) {
         U[i] = inf.readInt();
         V[i] = inf.readInt();
-        /*if (!(i < U[i] && U[i] < V[i] && V[i] <= 2 * N)) {
-            wrong(INVALID_INPUT);
-        }*/
-       cout<<U[i]<<" "<<V[i]<<endl;
+        cout << U[i] << " " << V[i] << endl;
     }
 
-    // Hidden truth value (internal use only, not visible to players)
     T = inf.readToken();
     if ((int)T.size() != N) {
         wrong(INVALID_INPUT);
@@ -116,41 +117,25 @@ int main(int argc, char* argv[]) {
         if (c == '|') ++orCount;
     }
     if (orCount > R) {
-        // Judge data inconsistent with declared R
         wrong(INVALID_INPUT);
     }
 
-    // ---------- Output initial visible info to player ----------
-    // Format: N R, then N lines of U[i] V[i]
-    /*fprintf(stdout, "%d %d\n", N, R);
-    for (int i = 0; i < N; ++i) {
-        fprintf(stdout, "%d %d\n", U[i], V[i]);
-    }
-    fflush(stdout);*/
-
-    // ---------- Interaction loop ----------
     while (true) {
-        // Read operator ('?', '!')
         std::string op = ouf.readToken();
         if (op.empty()) wrong(INVALID_OUTPUT);
         const char type = op[0];
         if (type != '?' && type != '!') wrong(INVALID_OUTPUT);
 
-        // Read following string (s or t)
         std::string payload = ouf.readToken();
 
-        // Compatibility: remove trailing newline if present (readToken usually doesn't include it)
         if (!payload.empty() && payload.back() == '\n') payload.pop_back();
 
         if (type == '?') {
-            // Handle query
             int res = query(payload);
             fprintf(stdout, "%d\n", res);
             fflush(stdout);
         } else {
-            // Final answer
             answer(payload);
-            // answer() will call quitf internally; should not reach here normally
         }
     }
 }

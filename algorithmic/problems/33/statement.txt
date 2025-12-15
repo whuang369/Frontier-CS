@@ -20,17 +20,11 @@ Scoring
 Let m be the maximum permutation length you used across all queries.
 Your score for the test file will be determined as follows:
 
-m ≤ 90 → 90 points
+m ≤ 90 → 100 points
 
-90 < m ≤ 100 → 90 − 2 × (m − 90) points
+90 < m < 2000 -> linear function
 
-100 < m ≤ 120 → 70 − (m − 100) points
-
-120 < m ≤ 5000 → 80 − (m − 120) / 3 points
-
-5000 < m ≤ 10000 → 65 points
-
-m > 10000 → 0 points
+m >= 2000 -> 0
 
 Example
 Input
