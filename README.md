@@ -99,7 +99,7 @@ cd algorithmic && docker compose up -d
 frontier-eval --algorithmic 1 <your_solution.cpp>
 ```
 #### Raw Score
-We also support unbounded scoring for algorithmic problems compatible with algorithm evolve framework like OpenEvolve.
+Frontier-CS supports unbounded scoring for algorithmic problems, enabling open-ended evaluation compatible with algorithm evolution frameworks such as OpenEvolve.
 
 ```bash
 # Get unbounded score (without clipping to 100)
