@@ -57,6 +57,7 @@ int main(int argc, char *argv[]) {
   double R = (1.0*P)/(1.0*n);
   double score = (6-R)/(6-1.5);
   score = max(score, 0.0);
+  double unbounded_score = score;
   score = min(score, 1.0);
-  quitp(score, "Ratio: %.3lf", score);
+  quitp(score, "Ratio: %.3lf, RatioUnbounded: %.3lf", score, unbounded_score);
 }

@@ -82,8 +82,12 @@ int main(int argc, char* argv[]) {
             else if (used >= QUERY_LIMIT) score = 0.0;
             else score = double(QUERY_LIMIT - used) / double(QUERY_LIMIT - B);
 
+            double unbounded_score = 0.0;
+            if (used >= QUERY_LIMIT) unbounded_score = 0.0;
+            else unbounded_score = double(QUERY_LIMIT - used) / double(QUERY_LIMIT - B);
+
             cerr << "[Interactor] used=" << used << "\n";
-            quitp(score, "Correct Guess. Ratio: %.4f", score);
+            quitp(score, "Correct Guess. Ratio: %.4f, RatioUnbounded: %.4f", score, unbounded_score);
         } else {
             quitf(_wa, "Invalid Action Type: %s", op.c_str());
         }
