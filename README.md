@@ -91,18 +91,24 @@ See [research/README.md](research/README.md) for full documentation.
 
 ### Algorithmic Problems
 
-```bash
+```bash 
 # Start the judge server
 cd algorithmic && docker compose up -d
 
 # Evaluate a solution
 frontier-eval --algorithmic 1 <your_solution.cpp>
+```
+We also support unbounded scoring for algorithmic problems compatible with algorithm evolve framework like OpenEvolve.
 
+```bash
 # Get unbounded score (without clipping to 100)
 frontier-eval --algorithmic --unbounded 1 <your_solution.cpp> 
 ```
 
-> **NOTE** 1. We currently support **C++ only** for algorithmic problem solutions. 2. For each problem, we release only the test cases required for **local debugging and preview scoring**. The reference solutiosn and full test cases are deliberately withheld and thus the final scores may differ. To get the full evaluation and be included in the leaderboard, please submit your solutions following the "Submitting Results" section below.
+**NOTE**:
+
+1. We currently support C++17 only for algorithmic problem solutions.
+2. Reference solutions and hidden tests are withheld; full evaluation and leaderboard inclusion require submission via *Submitting Results* section.
 
 See [algorithmic/README.md](algorithmic/README.md) for full documentation.
 
