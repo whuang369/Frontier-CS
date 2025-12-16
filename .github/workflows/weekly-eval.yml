@@ -55,16 +55,8 @@ jobs:
       - name: Configure SkyPilot
         run: |
           mkdir -p ~/.sky
-          cat > ~/.sky/config.yaml << 'EOF'
-          gcp:
-            project_id: ${{ secrets.GCP_PROJECT_ID }}
-          jobs:
-            controller:
-              resources:
-                cloud: gcp
-                cpus: 4+
-                memory: 8+
-          EOF
+          # SkyPilot uses GCP project from gcloud config or ADC, not from sky config
+          sky check gcp || true
 
       - name: Generate pairs file (incremental)
         run: |
