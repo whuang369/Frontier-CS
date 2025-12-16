@@ -1,3 +1,4 @@
+## FrontierCS - Algorithmic Problems
 ### Problem Structure
 
 Each problem in `problems/{id}/` contains:
@@ -15,7 +16,7 @@ problems/{id}/
 
 ### Quick Start
 
-#### 1. Start Judge Server
+#### Start Judge Server
 
 ```bash
 docker-compose up --build -d   # First time
@@ -24,25 +25,6 @@ docker-compose up -d           # Subsequent runs
 
 Judge runs at `http://localhost:8081`.
 
-#### 2. Run Benchmark for LLMs
-
-```bash
-python scripts/run_tests.py <model_name>
-```
-
-*Supported models:*
-- `gpt`
-- `claude`, `claude-opus`, `claude-opus-4-5`, `claude-sonnet-4-5`
-- `gemini`, `gemini3`
-- `Grok`
-
-#### 3. View Results
-
-Results saved to `scripts/solutions/`:
-- `{problem_id}_{model}_solution.cpp`: Generated code
-- `{problem_id}_{model}_result.json`: Judge result with score
-
-
 ### How It Works
 
 1. **Fetch problem** statement from judge API
@@ -50,6 +32,8 @@ Results saved to `scripts/solutions/`:
 3. **Submit** to judge server
 4. **Poll** for result
 5. **Score** based on test case pass rate
+
+The judge sever will save solutions and their detailed judging results under the folder `algorithmic/submissions`.
 
 
 ### Judge API
