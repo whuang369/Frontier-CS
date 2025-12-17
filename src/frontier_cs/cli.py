@@ -20,8 +20,8 @@ Usage:
     frontier-eval --list
     frontier-eval --list --algorithmic
 
-    # Batch evaluation (requires pairs file)
-    frontier-eval batch --pairs-file pairs.txt
+    # Batch evaluation (requires eval targets file)
+    frontier-eval batch --pairs-file eval_targets.txt
     frontier-eval batch --resume --results-dir results/batch1
 """
 
@@ -191,8 +191,8 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Evaluate from pairs file
-  frontier-eval batch --pairs-file pairs.txt
+  # Evaluate from eval targets file
+  frontier-eval batch --pairs-file eval_targets.txt
 
   # Evaluate specific pairs
   frontier-eval batch --pairs "sol1:flash_attn,sol2:cross_entropy"
@@ -203,7 +203,7 @@ Examples:
   # Check evaluation status
   frontier-eval batch --status --results-dir results/batch1
 
-Pairs file format (solution:problem per line):
+Eval targets file format (solution:problem per line):
   gpt5_flash_attn:flash_attn
   claude_sonnet_4_5_cross_entropy:cross_entropy
         """,

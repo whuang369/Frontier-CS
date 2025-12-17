@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-Internal tool: Check solution coverage and pairs.txt consistency.
+Internal tool: Check solution coverage and eval_targets.txt consistency.
 
 Compares three layers:
   (1) Expected: models × problems × variants (from config files)
   (2) Actual: what exists in solutions/ directory
-  (3) Declared: what's listed in pairs.txt
+  (3) Declared: what's listed in eval_targets.txt
 
 Usage:
     # Full check (all three layers)
-    python check_solutions.py --pairs-file pairs.txt
+    python check_solutions.py --pairs-file eval_targets.txt
 
     # Check coverage only (Expected vs Actual)
     python check_solutions.py
 
-    # Verify pairs.txt only (Declared vs Actual)
-    python check_solutions.py --verify-pairs pairs.txt
+    # Verify eval_targets.txt only (Declared vs Actual)
+    python check_solutions.py --verify-pairs eval_targets.txt
 """
 
 import argparse
@@ -168,7 +168,7 @@ def read_variant_indices(path: Path) -> List[int]:
 
 
 def read_pairs_file(path: Path) -> List[Tuple[str, str]]:
-    """Read pairs from pairs.txt (solution:problem per line)."""
+    """Read pairs from eval_targets.txt (solution:problem per line)."""
     pairs: List[Tuple[str, str]] = []
     if not path.is_file():
         return pairs
@@ -240,7 +240,7 @@ def analyze(
         "declared_invalid": {sol for sol in declared_solutions if sol not in actual},
 
         # Actual vs Declared
-        "not_in_pairs": actual - declared_solutions,  # Exists but not in pairs.txt
+        "not_in_pairs": actual - declared_solutions,  # Exists but not in eval_targets.txt
 
         # Full mappings for details
         "expected_map": expected,
@@ -301,13 +301,13 @@ def print_coverage_report(result: dict, models: List[str]):
 
 
 def print_pairs_report(result: dict, pairs_file: Optional[Path]):
-    """Print Declared (pairs.txt) vs Actual report."""
+    """Print Declared (eval_targets.txt) vs Actual report."""
     print(header("Pairs Consistency (Declared vs Actual)"))
     print()
 
     if pairs_file is None or not pairs_file.exists():
-        print(warning("No pairs.txt file specified or found"))
-        print(dim("  Use: --pairs-file pairs.txt"))
+        print(warning("No eval_targets.txt file specified or found"))
+        print(dim("  Use: --pairs-file eval_targets.txt"))
         print()
         return
 
@@ -316,10 +316,10 @@ def print_pairs_report(result: dict, pairs_file: Optional[Path]):
     invalid = len(result["declared_invalid"])
     not_in_pairs = len(result["not_in_pairs"])
 
-    print(count_label("Declared in pairs.txt", declared, Colors.BLUE))
+    print(count_label("Declared in eval_targets.txt", declared, Colors.BLUE))
     print(count_label("Valid (solution exists)", valid, Colors.GREEN))
     print(count_label("Invalid (solution missing)", invalid, Colors.RED if invalid else Colors.GREEN))
-    print(count_label("On disk but not in pairs.txt", not_in_pairs, Colors.YELLOW if not_in_pairs else Colors.DIM))
+    print(count_label("On disk but not in eval_targets.txt", not_in_pairs, Colors.YELLOW if not_in_pairs else Colors.DIM))
     print()
 
     # Invalid pairs (solution doesn't exist)
@@ -332,9 +332,9 @@ def print_pairs_report(result: dict, pairs_file: Optional[Path]):
             print(dim(f"    ... and {invalid - 5} more"))
         print()
 
-    # Solutions not in pairs.txt
+    # Solutions not in eval_targets.txt
     if not_in_pairs > 0:
-        print(warning(f"{not_in_pairs} solutions exist but are not in pairs.txt:"))
+        print(warning(f"{not_in_pairs} solutions exist but are not in eval_targets.txt:"))
 
         # Separate into expected (LLM) vs manual
         expected_not_declared = result["not_in_pairs"] & result["generated"]
@@ -383,7 +383,7 @@ def main():
     repo_root = research_dir.parent  # Root of repository
 
     parser = argparse.ArgumentParser(
-        description="Check solution coverage and pairs.txt consistency",
+        description="Check solution coverage and eval_targets.txt consistency",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(

@@ -167,7 +167,7 @@ def load_docker_config(config_path: Path) -> Dict[str, Tuple[str, bool, bool]]:
 
 
 def write_problems_from_pairs(pairs_path: Path, target_path: Path) -> None:
-    """Extract problem paths from pairs.txt and write to a problems file."""
+    """Extract problem paths from eval_targets.txt and write to a problems file."""
     if not pairs_path.is_file():
         return
 

@@ -47,7 +47,7 @@ class BatchEvaluator:
 
         # Evaluate from a pairs file
         evaluator = BatchEvaluator(results_dir="results/batch1")
-        evaluator.evaluate_pairs_file(Path("pairs.txt"))
+        evaluator.evaluate_pairs_file(Path("eval_targets.txt"))
     """
 
     STATE_FILE = ".state.json"

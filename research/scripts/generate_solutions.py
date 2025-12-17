@@ -559,18 +559,18 @@ Examples:
         print("ERROR: Cannot mix problem-based (--problem, --problems-file) and solution-based (--solution, --solutions-file) options")
         sys.exit(1)
 
-    # Default priority: pairs.txt (solutions) > problems.txt (problems)
+    # Default priority: problems.txt > eval_targets.txt (solutions-file is lowest priority)
     if not has_problem_targets and not has_solution_targets:
-        pairs_default = repo_root / "pairs.txt"  # pairs.txt is in repo root
         problems_default = base_dir / "problems.txt"
-        if pairs_default.is_file():
-            args.solutions_file = str(pairs_default)
-            has_solution_targets = True
-            print(f"No targets provided; defaulting to solutions from {pairs_default}.")
-        elif problems_default.is_file():
+        eval_targets_default = repo_root / "eval_targets.txt"
+        if problems_default.is_file():
             args.problems_file = str(problems_default)
             has_problem_targets = True
             print(f"No targets provided; defaulting to {problems_default}.")
+        elif eval_targets_default.is_file():
+            args.solutions_file = str(eval_targets_default)
+            has_solution_targets = True
+            print(f"No targets provided; defaulting to solutions from {eval_targets_default}.")
         else:
             print("ERROR: Provide --problem, --problems-file, --solution, or --solutions-file")
             sys.exit(1)
@@ -613,11 +613,11 @@ Examples:
     # Handle --solution patterns (expands to solutions-file format)
     if args.solution_patterns:
         import fnmatch
-        # Load pairs.txt to get solution->problem mapping (in repo root)
-        pairs_path = repo_root / "pairs.txt"
+        # Load eval_targets.txt to get solution->problem mapping (in repo root)
+        eval_targets_path = repo_root / "eval_targets.txt"
         solution_to_problem: Dict[str, str] = {}
-        if pairs_path.is_file():
-            for line in pairs_path.read_text(encoding="utf-8").splitlines():
+        if eval_targets_path.is_file():
+            for line in eval_targets_path.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
                 if not line or line.startswith("#") or ":" not in line:
                     continue
@@ -890,7 +890,7 @@ Examples:
             sol_dir = create_solution(repo_root, task.solution_name, code)
             print(f"  {green('✓')} Created: {green(str(sol_dir))}")
             print(f"  {dim('Log saved:')} {dim(str(log_file))}")
-            print(f"  {dim('pairs.txt:')} {task.solution_name}:{task.display_path}")
+            print(f"  {dim('eval_targets.txt:')} {task.solution_name}:{task.display_path}")
             return ("generated", task.solution_name, None, task.provider, pool_token)
         except Exception as exc:
             message = f"{exc} (log: {log_file})"
