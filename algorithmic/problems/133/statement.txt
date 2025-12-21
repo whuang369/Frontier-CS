@@ -32,12 +32,13 @@ Scoring
 
 Note:
 This problem provides four parameters p1, p2, p3, p4 in the input file.
-All four values must be read from the input, but only p2 is used for scoring;
-p1, p3, and p4 are ignored.
+All four values must be read from the input, but only p1 and p3 are used for scoring;
+p2 and p4 are ignored.
 
 Let difference denote the absolute difference between your answer and the standard answer.
 Your score for each test point is computed as follows:
 
 score = 100 / (1 + p1 * p3)
+
 
 The total score is the sum of the scores over all test points.
