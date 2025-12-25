@@ -77,14 +77,15 @@ int main(int argc, char* argv[]) {
     long long max_mass = 20000000, max_volume = 25000000;
     if (total_mass > max_mass) quitf(_wa, "Total mass exceeds limit");
     if (total_volume > max_volume) quitf(_wa, "Total volume exceeds limit");
-    double score_ratio = 0;
+    double score_ratio = 0, unbounded_ratio = 0;
     if (best_value <= baseline_value) {
         if (participant_value >= best_value) score_ratio = 1.0;
         else score_ratio = 0.0;
     }
     else {
         score_ratio = max(0.0, min(1.0, (double)(participant_value - baseline_value) / (best_value - baseline_value)));
+        unbounded_ratio = (double)(participant_value - baseline_value) / (best_value - baseline_value);
     }
     bool correct = (score_ratio == 1.0);
-    quitp(score_ratio, "Value: %lld. Ratio: %.4f", participant_value, score_ratio);
+    quitp(score_ratio, "Value: %lld. Ratio: %.4f, RatioUnbounded: %.4f", participant_value, score_ratio, unbounded_ratio);
 }
