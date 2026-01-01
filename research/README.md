@@ -86,39 +86,46 @@ research/problems/
 
 | File                   | Purpose                                                 |
 | ---------------------- | ------------------------------------------------------- |
-| `config.yaml`          | Runtime config (Docker image, GPU requirement, timeout) |
+| `config.yaml`          | Runtime config (Docker image, GPU, timeout, dependencies) |
 | `readme`               | Problem description, API spec, scoring formula          |
-| `set_up_env.sh`        | Environment setup (install deps, check CUDA)            |
-| `download_datasets.sh` | Download datasets (for local pre-download)              |
+| `set_up_env.sh`        | Dataset preparation only (deps handled by framework)    |
 | `evaluate.sh`          | Evaluation entry point                                  |
-| `run_evaluator.sh`     | Invokes `evaluator.py`                                  |
 | `evaluator.py`         | Core evaluation logic                                   |
-| `resources/`           | Baseline code, benchmark, test data                     |
+| `resources/`           | Baseline code, benchmark, test data, pyproject.toml     |
 
 ### config.yaml Example
 
 ```yaml
-dependencies:
-  uv_project: resources # Optional: uv project in resources/
-datasets: [] # Optional: dataset URLs
-tag: hpc # Category: os, hpc, ai, db, pl, security
+tag: hpc  # Category: os, hpc, ai, db, pl, security
 runtime:
+  timeout_seconds: 1800
+  environment: "Custom environment description for LLM prompts"  # Optional
   docker:
     image: andylizf/triton-tlx:tlx-nv-cu122
     gpu: true
-  timeout_seconds: 1800
+    dind: false  # Set true for Docker-in-Docker (auto-installs Docker CLI)
+  resources:
+    accelerators: "L4:1"  # GPU type and count
+dependencies:
+  uv_project: resources  # Auto-synced by framework (pyproject.toml in resources/)
 ```
+
+The framework automatically:
+- Installs dependencies from `uv_project` via `uv sync`
+- Installs Docker CLI inside the container when `dind: true`
 
 ## Evaluation Flow
 
 Inside the Docker container, the execution order is:
 
 ```
-1. set_up_env.sh         →  Initialize environment
-2. Copy solution.py      →  /work/execution_env/solution_env/
-3. evaluate.sh           →  Check files, call run_evaluator.sh
-4. run_evaluator.sh      →  python3 evaluator.py
-5. evaluator.py          →  Load Solution.solve(), run benchmark, print score
+1. Copy solution.py      →  /work/execution_env/solution_env/
+2. Install curl/uv       →  Framework auto-installs if missing
+3. Install Docker CLI    →  If dind: true in config.yaml
+4. uv sync               →  Auto-install deps from uv_project
+5. set_up_env.sh         →  Dataset preparation (if exists)
+6. evaluate.sh           →  Check files, run evaluator
+7. evaluator.py          →  Load Solution.solve(), run benchmark, print score
 ```
 
 The final score is extracted from the last numeric line of stdout.

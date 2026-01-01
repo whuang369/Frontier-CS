@@ -370,11 +370,20 @@ class EvaluationState:
         return len(skipped)
 
     def get_failed_pairs(self) -> List[Pair]:
-        """Get list of failed pairs."""
+        """
+        Get list of pairs that should be retried.
+
+        Includes both explicit failures (error/timeout) AND zero-score successes.
+        We cannot reliably distinguish between:
+        - A solution that legitimately scores 0
+        - An evaluator bug that prints "0" before exit(1)
+        - Infrastructure issues that cause 0 output
+        So we treat all zero-scores as potential failures worth retrying.
+        """
         return [
             Pair(solution=pair_id.split(":")[0], problem=pair_id.split(":")[1])
             for pair_id, r in self.results.items()
-            if r.status in ("error", "timeout")
+            if r.status in ("error", "timeout") or (r.is_success and r.score == 0)
         ]
 
     def get_successful_pairs(self) -> List[Pair]:

@@ -296,11 +296,8 @@ def main(
         print(json.dumps({"error": str(e), "score": 0, "traceback": traceback.format_exc()}))
         raise
     else:
+        # Output JSON only - run_evaluator.sh extracts score from JSON
         print(json.dumps(payload))
-        # Format: "score score_unbounded" (space-separated) for batch runner
-        score = payload.get("score", 0)
-        score_unbounded = payload.get("score_unbounded", score)
-        print(f"{score} {score_unbounded}")
 
 
 if __name__ == "__main__":

@@ -11,10 +11,12 @@ Supports:
 - Export failed/pending/aggregated results
 """
 
+import hashlib
 import logging
 import queue
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -53,7 +55,8 @@ class BatchEvaluator:
         evaluator.evaluate_pairs(pairs)
     """
 
-    STATE_FILE = ".state.json"
+    # State file per track to avoid mixing research/algorithmic pairs
+    STATE_FILE_TEMPLATE = ".state.{track}.json"
 
     def __init__(
         self,
@@ -110,7 +113,9 @@ class BatchEvaluator:
                 local_cache=self.results_dir / ".bucket_cache",
             )
 
-        self.state_path = self.results_dir / self.STATE_FILE
+        # Use track-specific state file to avoid mixing research/algorithmic pairs
+        state_file = self.STATE_FILE_TEMPLATE.format(track=track)
+        self.state_path = self.results_dir / state_file
         self.state = EvaluationState.load(self.state_path)
         self._pair_hashes: Dict[str, tuple] = {}
 
@@ -393,7 +398,10 @@ class BatchEvaluator:
 
         logger.info(f"Creating {self.pool_size} SkyPilot clusters...")
 
-        self._cluster_names = [f"eval-worker-{i}" for i in range(self.pool_size)]
+        # Add date hash to cluster names to avoid reusing old clusters with stale config
+        date_str = datetime.now().strftime("%m%d%H%M")
+        digest = hashlib.md5(date_str.encode()).hexdigest()[:6]
+        self._cluster_names = [f"eval-worker-{i}-{digest}" for i in range(self.pool_size)]
 
         # Create clusters in parallel
         def create_one(name: str) -> bool:
@@ -626,7 +634,13 @@ class BatchEvaluator:
         on_progress: Optional[Callable[[Pair, EvaluationResult], None]] = None,
         show_progress: bool = True,
     ) -> EvaluationState:
-        """Retry all failed pairs from the current state."""
+        """
+        Retry all failed pairs from the current state.
+
+        Includes both error/timeout AND score=0 pairs, because we cannot
+        reliably distinguish between a legitimate 0 score and a failure
+        that printed "0" before exiting.
+        """
         failed_pairs = self.state.get_failed_pairs()
         if not failed_pairs:
             logger.info("No failed pairs to retry")

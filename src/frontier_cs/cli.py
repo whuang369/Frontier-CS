@@ -349,7 +349,7 @@ Solution files use format: {problem}.{model}.py (e.g., flash_attn.gpt5.py)
     batch_control.add_argument(
         "--retry-failed",
         action="store_true",
-        help="Retry all failed pairs",
+        help="Retry failed pairs (includes error/timeout AND score=0)",
     )
     batch_control.add_argument(
         "--report",
@@ -575,6 +575,7 @@ def run_batch(args: argparse.Namespace) -> int:
         return 0
 
     # Handle retry-failed command
+    # Retries both error/timeout AND score=0 pairs (can't distinguish real 0 from failure)
     if args.retry_failed:
         print(f"\nRetrying failed pairs from {args.results_dir}")
         state = batch.retry_failed()

@@ -103,7 +103,7 @@ def pull_docker_image(image: str) -> bool:
             ["docker", "pull", image],
             capture_output=True,
             text=True,
-            timeout=300
+            timeout=900  # 15 minutes for large images (some oss-fuzz images are 10+ GB)
         )
         if result.returncode == 0:
             print(f"[Evaluator] Successfully pulled {image}")

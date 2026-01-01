@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from .base import Runner, EvaluationResult, EvaluationStatus
-from ..config import load_runtime_config
+from ..config import load_problem_config
 
 
 def _sanitize_name(name: str) -> str:
@@ -52,7 +52,7 @@ class SkyPilotRunner(Runner):
     DEFAULT_CLOUD = "gcp"
     DEFAULT_CPUS = "8+"
     DEFAULT_MEMORY = "16+"
-    DEFAULT_DISK_SIZE = 100  # Increased for problems that pull large Docker images
+    DEFAULT_DISK_SIZE = 200  # Large disk for PyTorch, Docker images, and datasets
     DEFAULT_GPU = "L4:1"
     DEFAULT_TIMEOUT = 1800  # 30 minutes
     DEFAULT_IDLE_TIMEOUT = 10  # 10 minutes
@@ -179,9 +179,13 @@ class SkyPilotRunner(Runner):
         start_time = time.time()
 
         # Load config from config.yaml
-        runtime_config = load_runtime_config(problem_path)
+        problem_config = load_problem_config(problem_path)
+        runtime_config = problem_config.runtime
         docker_config = runtime_config.docker
         res = runtime_config.resources
+
+        # Extract uv_project for automatic dependency installation
+        uv_project = problem_config.dependencies.get("uv_project")
 
         # Determine resources
         accelerators = res.accelerators
@@ -233,6 +237,7 @@ class SkyPilotRunner(Runner):
                 docker_config.gpu,
                 docker_config.dind,
                 pair_id=pair_id if self.bucket_url else None,
+                uv_project=uv_project,
             )
             task = sky.Task(
                 name=cluster_name,
@@ -366,10 +371,26 @@ class SkyPilotRunner(Runner):
         gpu: bool,
         dind: bool,
         pair_id: Optional[str] = None,
+        uv_project: Optional[str] = None,
     ) -> str:
         """Get run script for SkyPilot task."""
         gpu_flags = "--gpus all" if gpu else ""
         dind_flags = '-v /var/run/docker.sock:/var/run/docker.sock' if dind else ""
+
+        # Build Docker CLI install command for DinD (socket is mounted but CLI needed)
+        if dind:
+            dind_install_cmd = textwrap.dedent('''
+                    # Install Docker CLI for DinD
+                    if ! command -v docker &>/dev/null; then
+                        echo "[framework] Installing Docker CLI for DinD..."
+                        DOCKER_VERSION="27.3.1"
+                        curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" | tar xz -C /tmp
+                        mv /tmp/docker/docker /usr/local/bin/docker
+                        chmod +x /usr/local/bin/docker
+                        rm -rf /tmp/docker
+                    fi''').strip()
+        else:
+            dind_install_cmd = "# DinD not enabled"
 
         # Build bucket write command if pair_id is provided
         if pair_id:
@@ -394,6 +415,18 @@ class SkyPilotRunner(Runner):
             ''')
         else:
             bucket_write = ""
+
+        # Build uv sync command if uv_project is specified in config.yaml
+        if uv_project:
+            uv_sync_cmd = textwrap.dedent(f'''
+                    if [ -d "{uv_project}" ] && [ -f "{uv_project}/pyproject.toml" ]; then
+                        echo "[framework] Installing dependencies from {uv_project}"
+                        # Install to system Python (uv does not support --system-site-packages properly)
+                        # See: https://github.com/astral-sh/uv/issues/7358
+                        uv pip install --system -e "{uv_project}"
+                    fi''').strip()
+        else:
+            uv_sync_cmd = "# No uv_project specified in config.yaml"
 
         return textwrap.dedent(f"""\
             set -euo pipefail
@@ -427,7 +460,16 @@ class SkyPilotRunner(Runner):
 
                     cd /work/research/{problem_id}
 
-                    # Install uv if not present (needed by set_up_env.sh)
+                    # Install curl if not present (needed for uv install and other downloads)
+                    if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
+                        if command -v apt-get &>/dev/null; then
+                            apt-get update -qq && apt-get install -y -qq curl >/dev/null 2>&1 || true
+                        fi
+                    fi
+
+                    {dind_install_cmd}
+
+                    # Install uv if not present
                     if ! command -v uv &>/dev/null; then
                         if command -v curl &>/dev/null; then
                             curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -437,7 +479,10 @@ class SkyPilotRunner(Runner):
                         export PATH="$HOME/.local/bin:$PATH"
                     fi
 
-                    # Setup environment
+                    # Auto-install dependencies from config.yaml uv_project
+                    {uv_sync_cmd}
+
+                    # Run problem-specific setup if exists (for dataset preparation)
                     if [ -f set_up_env.sh ]; then
                         ./set_up_env.sh
                     fi
@@ -604,8 +649,10 @@ class SkyPilotRunner(Runner):
             )
 
         # Load config
-        runtime_config = load_runtime_config(problem_path)
+        problem_config = load_problem_config(problem_path)
+        runtime_config = problem_config.runtime
         docker_config = runtime_config.docker
+        uv_project = problem_config.dependencies.get("uv_project")
 
         # Create workspace with file mounts
         with tempfile.TemporaryDirectory(prefix="frontier_exec_") as workspace_dir:
@@ -618,6 +665,7 @@ class SkyPilotRunner(Runner):
                 docker_config.image,
                 docker_config.gpu,
                 docker_config.dind,
+                uv_project=uv_project,
             )
             # Sanitize task name: problem_id may contain "/" for nested problems
             # (e.g., "cant_be_late/high_availability_loose_deadline_large_overhead")
