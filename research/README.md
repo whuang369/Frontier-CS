@@ -39,14 +39,26 @@ Batch evaluation automatically scans `solutions/` and parses problem IDs from fi
 
 ```bash
 # Evaluate all solutions (auto-skips completed)
-frontier batch
+frontier-eval batch
+
+# With SkyPilot (cloud VMs)
+frontier-eval batch --skypilot --workers 20 --clusters 4
 
 # Check status
-frontier batch --status
+frontier-eval batch --status
 
 # Force re-evaluate all
-frontier batch --no-resume
+frontier-eval batch --no-resume
+
+# Retry failed evaluations
+frontier-eval batch --retry-failed
 ```
+
+**Parameters:**
+- `--workers`: Number of parallel workers (default: 1)
+- `--clusters`: Number of SkyPilot clusters for load-balancing (default: same as workers, research + skypilot only)
+
+With `--workers 20 --clusters 4`, 20 workers share 4 clusters via load-balancing.
 
 ## Python API
 

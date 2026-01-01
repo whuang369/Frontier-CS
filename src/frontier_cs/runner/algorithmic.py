@@ -4,6 +4,7 @@ Runner for algorithmic problems using the judge server.
 
 import logging
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -25,6 +26,9 @@ class AlgorithmicRunner(Runner):
 
     DEFAULT_JUDGE_URL = "http://localhost:8081"
     DEFAULT_POLL_INTERVAL = 2  # seconds
+
+    # Class-level lock to prevent multiple threads from starting judge simultaneously
+    _startup_lock = threading.Lock()
 
     def __init__(
         self,
@@ -101,27 +105,35 @@ class AlgorithmicRunner(Runner):
 
     def _ensure_judge(self) -> bool:
         """Ensure judge server is running, start if needed."""
+        # Fast path: already started or available
         if self._judge_started or self._is_judge_available():
             self._judge_started = True
             return True
 
-        logger.info(f"Judge server not available at {self.judge_url}")
+        # Use lock to prevent multiple threads from starting judge simultaneously
+        with self._startup_lock:
+            # Double-check after acquiring lock (another thread may have started it)
+            if self._judge_started or self._is_judge_available():
+                self._judge_started = True
+                return True
 
-        if not self.auto_start:
-            logger.error("auto_start disabled, cannot start judge automatically")
-            return False
+            logger.info(f"Judge server not available at {self.judge_url}")
 
-        if not self._start_judge():
-            logger.error("Failed to start judge server")
-            return False
+            if not self.auto_start:
+                logger.error("auto_start disabled, cannot start judge automatically")
+                return False
 
-        if not self._wait_for_judge():
-            logger.error("Judge server failed to become ready")
-            return False
+            if not self._start_judge():
+                logger.error("Failed to start judge server")
+                return False
 
-        self._judge_started = True
-        logger.info("Judge server is now running")
-        return True
+            if not self._wait_for_judge():
+                logger.error("Judge server failed to become ready")
+                return False
+
+            self._judge_started = True
+            logger.info("Judge server is now running")
+            return True
 
     def evaluate(
         self,

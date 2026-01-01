@@ -4,7 +4,7 @@ Batch evaluator for running multiple evaluations with incremental progress.
 Supports:
 - Batch evaluation of multiple solution-problem pairs
 - Incremental evaluation (resume from where you left off)
-- Parallel execution with worker pool (configurable pool_size)
+- Parallel execution with configurable workers and clusters
 - Both Docker and SkyPilot backends
 - Bucket storage for results (S3/GCS)
 - Progress bar with tqdm
@@ -38,19 +38,21 @@ class BatchEvaluator:
     """
     Batch evaluator with incremental progress tracking.
 
-    Uses a unified worker pool model:
-    - pool_size=1: Sequential evaluation (single worker)
-    - pool_size=N: Parallel evaluation with N workers
+    Parameters:
+    - workers: Number of parallel workers/concurrent evaluations
+    - clusters: Number of SkyPilot clusters (research + skypilot only)
 
-    For SkyPilot backend, workers are reusable clusters created once
-    at the start and terminated at the end, avoiding cold start overhead.
+    For SkyPilot research track, each worker uses a dedicated cluster.
+    For SkyPilot algorithmic track, all workers share a single go-judge cluster.
+    For Docker backend, workers are threads running local evaluations.
 
     Example usage:
-        # Evaluate with 4 parallel workers
+        # Evaluate with 4 parallel workers on 4 SkyPilot clusters
         evaluator = BatchEvaluator(
             results_dir="results/batch1",
             backend="skypilot",
-            pool_size=4,
+            workers=4,
+            clusters=4,
         )
         evaluator.evaluate_pairs(pairs)
     """
@@ -65,14 +67,13 @@ class BatchEvaluator:
         base_dir: Optional[Path] = None,
         backend: str = "docker",
         track: str = "research",
-        pool_size: int = 1,
+        workers: int = 1,
+        clusters: Optional[int] = None,
         timeout: Optional[int] = None,
         bucket_url: Optional[str] = None,
         keep_cluster: bool = False,
         idle_timeout: Optional[int] = 10,
         judge_url: Optional[str] = None,
-        # Legacy alias
-        max_concurrent: Optional[int] = None,
     ):
         """
         Initialize batch evaluator.
@@ -82,28 +83,26 @@ class BatchEvaluator:
             base_dir: Frontier-CS base directory (auto-detected if None)
             backend: Evaluation backend ("docker" or "skypilot")
             track: Evaluation track ("research" or "algorithmic")
-            pool_size: Number of parallel workers (1 = sequential)
+            workers: Number of parallel workers/concurrent evaluations (default: 1)
+            clusters: Number of SkyPilot clusters (research + skypilot only, default: same as workers)
             timeout: Default timeout for evaluations (seconds)
             bucket_url: Optional bucket URL for result storage (s3://... or gs://...)
             keep_cluster: Keep SkyPilot clusters running after evaluation
             idle_timeout: Minutes of idleness before autostop (default: 10)
             judge_url: URL for algorithmic judge server (default: http://localhost:8081)
-            max_concurrent: Legacy alias for pool_size
         """
         self.track = track
         self.results_dir = Path(results_dir)
         self.base_dir = base_dir or self._find_base_dir()
         self.backend = backend
-        self.pool_size = max_concurrent if max_concurrent is not None else pool_size
+        self.workers = workers
+        self.clusters = clusters if clusters is not None else workers  # Default: same as workers
         self.timeout = timeout
         self.bucket_url = bucket_url
         self.keep_cluster = keep_cluster
         self.idle_timeout = idle_timeout
         self.judge_url = judge_url or "http://localhost:8081"
         self._bucket_storage = None
-
-        # For backwards compatibility
-        self.max_concurrent = self.pool_size
 
         # Initialize bucket storage if provided
         if bucket_url:
@@ -279,7 +278,7 @@ class BatchEvaluator:
             self._export_all_results(pairs)
             return self.state
 
-        logger.info(f"Evaluating {len(pending)} pairs (pool_size={self.pool_size})")
+        logger.info(f"Evaluating {len(pending)} pairs (workers={self.workers}, clusters={self.clusters})")
 
         # Evaluate with unified worker pool
         self._evaluate_with_workers(pending, on_progress, show_progress)
@@ -299,10 +298,11 @@ class BatchEvaluator:
         Evaluate pairs using a pool of workers.
 
         For Docker: Each worker is a thread that runs docker evaluations.
-        For SkyPilot: Each worker is a reusable cluster. Clusters are created
+        For SkyPilot (research): Each worker uses a dedicated cluster. Clusters are created
                      once at the start and reused for all evaluations.
+        For SkyPilot (algorithmic): All workers share a single go-judge cluster.
 
-        When pool_size=1, this is equivalent to sequential evaluation.
+        When workers=1, this is equivalent to sequential evaluation.
         """
         # Create work queue
         work_queue: queue.Queue[Pair] = queue.Queue()
@@ -314,15 +314,18 @@ class BatchEvaluator:
         if show_progress and HAS_TQDM:
             pbar = tqdm(total=len(pairs), desc="Evaluating", unit="pair", dynamic_ncols=True)
 
-        # For SkyPilot with pool_size > 1, create reusable clusters
-        if self.backend == "skypilot" and self.pool_size > 1:
+        # For SkyPilot research track with multiple clusters, create reusable cluster pool
+        # Algorithmic track uses a single go-judge cluster with HTTP requests, no cluster pool needed
+        cluster_pool: queue.Queue[str] = queue.Queue()
+        if self.backend == "skypilot" and self.clusters > 1 and self.track != "algorithmic":
             self._create_cluster_pool()
+            # Populate cluster pool for load-balancing
+            for cluster_name in self._cluster_names:
+                cluster_pool.put(cluster_name)
 
         try:
             # Define worker function
             def worker(worker_id: int):
-                cluster_name = self._cluster_names[worker_id] if self._cluster_names else None
-
                 while True:
                     try:
                         pair = work_queue.get_nowait()
@@ -332,10 +335,18 @@ class BatchEvaluator:
                     self.state.mark_running(pair)
                     self._save_state()
 
+                    # Acquire cluster from pool if using cluster pool
+                    cluster_name = None
+                    if not cluster_pool.empty() or self._cluster_names:
+                        try:
+                            cluster_name = cluster_pool.get(timeout=300)  # Wait up to 5 min for a cluster
+                        except queue.Empty:
+                            logger.warning(f"Worker {worker_id}: Timeout waiting for cluster, using direct eval")
+
                     try:
                         # Execute evaluation
                         if cluster_name:
-                            # Use existing cluster with sky exec
+                            # Use cluster from pool with sky exec
                             result = self._runner.exec_on_cluster(
                                 cluster_name,
                                 pair.problem,
@@ -369,15 +380,17 @@ class BatchEvaluator:
                         if pbar:
                             pbar.write(f"  [ERROR] {pair.id}: {e}")
                     finally:
+                        # Return cluster to pool
+                        if cluster_name:
+                            cluster_pool.put(cluster_name)
                         self._save_state()
                         if pbar:
                             pbar.update(1)
                         work_queue.task_done()
 
-            # Run workers (use actual cluster count, some may have failed to create)
-            num_workers = len(self._cluster_names) if self._cluster_names else self.pool_size
-            with ThreadPoolExecutor(max_workers=num_workers) as executor:
-                futures = [executor.submit(worker, i) for i in range(num_workers)]
+            # Run workers
+            with ThreadPoolExecutor(max_workers=self.workers) as executor:
+                futures = [executor.submit(worker, i) for i in range(self.workers)]
                 for future in as_completed(futures):
                     try:
                         future.result()
@@ -396,23 +409,23 @@ class BatchEvaluator:
         """Create a pool of SkyPilot clusters for parallel evaluation."""
         from ..runner.skypilot import SkyPilotRunner
 
-        logger.info(f"Creating {self.pool_size} SkyPilot clusters...")
+        logger.info(f"Creating {self.clusters} SkyPilot clusters...")
 
         # Add date hash to cluster names to avoid reusing old clusters with stale config
         date_str = datetime.now().strftime("%m%d%H%M")
         digest = hashlib.md5(date_str.encode()).hexdigest()[:6]
-        self._cluster_names = [f"eval-worker-{i}-{digest}" for i in range(self.pool_size)]
+        self._cluster_names = [f"eval-worker-{i}-{digest}" for i in range(self.clusters)]
 
         # Create clusters in parallel
         def create_one(name: str) -> bool:
             return self._runner.create_cluster(name)
 
-        with ThreadPoolExecutor(max_workers=self.pool_size) as executor:
+        with ThreadPoolExecutor(max_workers=self.clusters) as executor:
             results = list(executor.map(create_one, self._cluster_names))
 
         successful = sum(results)
-        if successful < self.pool_size:
-            logger.warning(f"Only {successful}/{self.pool_size} clusters created successfully")
+        if successful < self.clusters:
+            logger.warning(f"Only {successful}/{self.clusters} clusters created successfully")
             # Keep only successful clusters
             self._cluster_names = [
                 name for name, ok in zip(self._cluster_names, results) if ok

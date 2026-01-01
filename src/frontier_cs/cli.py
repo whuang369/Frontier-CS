@@ -296,9 +296,15 @@ Solution files use format: {problem}.{model}.py (e.g., flash_attn.gpt5.py)
         help="Use SkyPilot for cloud evaluation",
     )
     batch_backend.add_argument(
-        "--pool-size",
+        "--clusters",
         type=int,
-        help="Number of parallel workers (alias for --max-concurrent)",
+        help="Number of SkyPilot clusters (research + skypilot only, default: same as --workers)",
+    )
+    batch_backend.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of parallel workers/concurrent evaluations (default: 1)",
     )
     batch_backend.add_argument(
         "--idle-timeout",
@@ -310,12 +316,6 @@ Solution files use format: {problem}.{model}.py (e.g., flash_attn.gpt5.py)
         "--keep-cluster",
         action="store_true",
         help="Keep SkyPilot cluster running after evaluation (disables autostop)",
-    )
-    batch_backend.add_argument(
-        "--max-concurrent",
-        type=int,
-        default=1,
-        help="Maximum concurrent evaluations (default: 1)",
     )
     batch_backend.add_argument(
         "--timeout",
@@ -505,15 +505,17 @@ def run_batch(args: argparse.Namespace) -> int:
     idle_timeout = None if keep_cluster else getattr(args, "idle_timeout", 10)
     judge_url = getattr(args, "judge_url", None)
 
-    # Determine pool size (--pool-size takes precedence over --max-concurrent)
-    pool_size = getattr(args, "pool_size", None) or args.max_concurrent
+    # Get workers and clusters
+    workers = args.workers
+    clusters = args.clusters  # None means same as workers
 
     # Create batch evaluator
     batch = BatchEvaluator(
         results_dir=args.results_dir,
         backend=backend,
         track=track,
-        pool_size=pool_size,
+        workers=workers,
+        clusters=clusters,
         timeout=args.timeout,
         bucket_url=bucket_url,
         keep_cluster=keep_cluster,
