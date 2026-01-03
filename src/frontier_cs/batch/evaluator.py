@@ -69,7 +69,7 @@ class BatchEvaluator:
         track: str = "research",
         workers: int = 1,
         clusters: Optional[int] = None,
-        timeout: Optional[int] = None,
+        timeout: Optional[int] = 300,  # Default 5 min timeout per evaluation
         bucket_url: Optional[str] = None,
         keep_cluster: bool = False,
         idle_timeout: Optional[int] = 10,
