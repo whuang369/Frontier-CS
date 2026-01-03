@@ -92,15 +92,15 @@ jobs:
 
           # Copy previous state for research track
           mkdir -p results/batch
-          if [ -f /tmp/prev-results/batch/.state.json ]; then
-            cp /tmp/prev-results/batch/.state.json results/batch/
+          if [ -f /tmp/prev-results/batch/.state.research.json ]; then
+            cp /tmp/prev-results/batch/.state.research.json results/batch/
             echo "Loaded previous state for research track"
           fi
 
           # Copy previous state for algorithmic track
           mkdir -p algorithmic/results/batch
-          if [ -f /tmp/prev-results/algorithmic/batch/.state.json ]; then
-            cp /tmp/prev-results/algorithmic/batch/.state.json algorithmic/results/batch/
+          if [ -f /tmp/prev-results/algorithmic/batch/.state.algorithmic.json ]; then
+            cp /tmp/prev-results/algorithmic/batch/.state.algorithmic.json algorithmic/results/batch/
             echo "Loaded previous state for algorithmic track"
           fi
 
