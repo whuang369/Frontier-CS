@@ -29,6 +29,9 @@ jobs:
       - name: Upload to HuggingFace
         run: |
           cd hf_export
-          hf upload FrontierCS/Frontier-CS data --repo-type dataset
+          # Upload data folder
+          huggingface-cli upload FrontierCS/Frontier-CS data data --repo-type dataset
+          # Upload dataset card
+          huggingface-cli upload FrontierCS/Frontier-CS README.md README.md --repo-type dataset
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
