@@ -172,9 +172,11 @@ def read_dotenv() -> dict[str, str]:
 def run_trial(pid: str, env: dict) -> dict:
     """Run one harbor trial for problem `pid`; return a normalized result record."""
     log_path = LOG_DIR / f"{TRACK.replace('.', '_')}_{pid}.log"
-    # OPENAI_API_KEY / OPENAI_BASE_URL reach codex via `env` (os.environ of the
-    # harbor process, read by the agent) — not via --agent-env, so the key never
-    # appears in the process command line.
+    # OPENAI_API_KEY reaches codex via `env` (os.environ of the harbor process,
+    # read by the agent) — deliberately not via --agent-env, so the secret key
+    # never appears on the process command line. OPENAI_BASE_URL is not secret,
+    # so we forward it explicitly to the agent via --agent-env to guarantee it
+    # reaches the containerized agent regardless of harbor's host-env passthrough.
     cmd = [
         "uv", "run", "--no-sync", "frontier", "harbor", "trial", TRACK, pid,
         "-a", AGENT, "-m", MODEL, "--uv",
@@ -183,6 +185,9 @@ def run_trial(pid: str, env: dict) -> dict:
     ]
     for kw in AGENT_KWARGS:
         cmd += ["--agent-kwarg", kw]
+    base_url = env.get("OPENAI_BASE_URL")
+    if base_url:
+        cmd += ["--agent-env", f"OPENAI_BASE_URL={base_url}"]
     if VERIFIER_TIMEOUT is not None:
         cmd += ["--verifier-timeout", str(VERIFIER_TIMEOUT)]
 
