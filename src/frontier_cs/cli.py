@@ -457,6 +457,24 @@ when the agent times out after making a valid iterative submission.
         help="Agent model name passed to Harbor",
     )
     harbor_trial.add_argument(
+        "--agent-kwarg",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Agent kwarg forwarded to Harbor's `trial start --agent-kwarg` "
+             "(e.g. reasoning_effort=high). Repeatable.",
+    )
+    harbor_trial.add_argument(
+        "--agent-env",
+        "--ae",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Environment variable scoped to the agent, forwarded to Harbor's "
+             "`trial start --agent-env` (e.g. OPENAI_API_KEY=). Repeatable.",
+    )
+
+    harbor_trial.add_argument(
         "--dataset-dir",
         type=Path,
         help="Directory containing generated Harbor tasks",
@@ -1630,6 +1648,11 @@ def run_harbor(args: argparse.Namespace) -> int:
     command.extend(["trial", "start", "-p", str(task_path), "-a", args.agent])
     if args.model:
         command.extend(["-m", args.model])
+    for kwarg in getattr(args, "agent_kwarg", []) or []:
+        command.extend(["--agent-kwarg", kwarg])
+    for agent_env in getattr(args, "agent_env", []) or []:
+        command.extend(["--agent-env", agent_env])
+
     if args.agent_timeout is not None:
         command.extend(["--agent-timeout", str(args.agent_timeout)])
     if args.verifier_timeout is not None:

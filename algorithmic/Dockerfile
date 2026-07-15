@@ -26,8 +26,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Clean apt cache
     && rm -rf /var/lib/apt/lists/*
 
-# --- 2. Update npm to latest version ---
-RUN npm install -g npm@latest
+# --- 2. Update npm (pin to a version compatible with the pinned Node 20) ---
+# npm@latest now resolves to npm 12+, which requires Node >=22 and fails the
+# Node 20 build with EBADENGINE. npm 11 is the newest line still supporting Node 20.
+RUN npm install -g npm@11
 
 # --- 3. Install go-judge (auto-detect architecture) ---
 # Use pinned version with fallback to avoid GitHub API rate limits
