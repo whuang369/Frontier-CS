@@ -34,6 +34,9 @@ Put your key in `.env` at the repo root (already gitignored):
 
 ```
 OPENAI_API_KEY=sk-your-key
+# Optional: a custom / proxy endpoint. If set, it is forwarded to the agent
+# automatically (via --agent-env). Leave it unset to use the default OpenAI API.
+OPENAI_BASE_URL=https://your-endpoint/v1
 ```
 
 ## 5. Run
