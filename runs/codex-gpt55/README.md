@@ -39,6 +39,27 @@ OPENAI_API_KEY=sk-your-key
 OPENAI_BASE_URL=https://your-endpoint/v1
 ```
 
+## Optional: custom HTTP-only node (force HTTP, disable WebSocket)
+
+By default codex uses the built-in OpenAI provider, whose Responses transport is
+**WebSocket**. If you point it at a custom / proxy endpoint that only speaks HTTP
+(Responses or Chat Completions), codex would still try WebSocket and fail to
+connect. harbor exposes no switch for this, so run this one-time patch (re-run it
+after upgrading harbor):
+
+```bash
+python runs/codex-gpt55/patch_codex_http.py
+```
+
+It makes harbor write a `supports_websockets = false` provider whenever
+`OPENAI_BASE_URL` is set, forcing plain HTTP. Pick the wire protocol in `.env`:
+
+```
+CODEX_WIRE_API=chat        # "chat" (/chat/completions) or "responses" (default)
+```
+
+Not needed for the default OpenAI endpoint.
+
 ## 5. Run
 
 ### 5a. Smoke test (single problem, verify the environment; empty key = no tokens spent)

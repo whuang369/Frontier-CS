@@ -188,6 +188,9 @@ def run_trial(pid: str, env: dict) -> dict:
     base_url = env.get("OPENAI_BASE_URL")
     if base_url:
         cmd += ["--agent-env", f"OPENAI_BASE_URL={base_url}"]
+    wire_api = env.get("CODEX_WIRE_API")
+    if wire_api:
+        cmd += ["--agent-env", f"CODEX_WIRE_API={wire_api}"]
     if VERIFIER_TIMEOUT is not None:
         cmd += ["--verifier-timeout", str(VERIFIER_TIMEOUT)]
 
@@ -248,6 +251,12 @@ def main() -> None:
         env["OPENAI_BASE_URL"] = base_url
     else:
         env.pop("OPENAI_BASE_URL", None)  # empty -> use the default OpenAI endpoint
+    # Optional HTTP wire protocol for a custom node (responses|chat). Only used
+    # with a custom OPENAI_BASE_URL + the force-HTTP patch (patch_codex_http.py);
+    # forwarded to the codex agent via --agent-env in run_trial.
+    wire_api = dotvals.get("CODEX_WIRE_API") or env.get("CODEX_WIRE_API", "")
+    if wire_api:
+        env["CODEX_WIRE_API"] = wire_api
 
     if not api_key:
         log("FATAL: no OPENAI_API_KEY found. Put it in .env (OPENAI_API_KEY=sk-...) "
