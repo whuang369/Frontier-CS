@@ -1,44 +1,47 @@
-# FrontierCS · Codex + GPT-5.5 批量评测
+# FrontierCS · Codex + GPT-5.5 Batch Evaluation
 
-`runs/codex-gpt55/run.py`:可断点续跑的并行评测脚本,用 `codex` agent + `openai/gpt-5.5`
-跑 `algorithmic` track 全部题目,结果写入 `runs/codex-gpt55/results.jsonl`。
-所需的代码改动已合入本分支,**clone 下来即可用,无需打补丁**。
+`runs/codex-gpt55/run.py`: a resumable parallel evaluation script that runs the `codex`
+agent + `openai/gpt-5.5` over the whole `algorithmic` track via `frontier harbor trial`,
+writing results to `runs/codex-gpt55/results.jsonl`. All required code changes are already
+merged into this branch — **just clone and run, no patch needed.**
 
 ---
 
-## 1. 获取代码
+## 1. Get the code
 
 ```bash
 git clone -b codex-gpt55-sweep https://github.com/whuang369/Frontier-CS.git FrontierCS
 cd FrontierCS
-uv sync                     # 建 venv(需 uv ≥ 0.9,Python 3.12)
+uv sync                     # build the venv (needs uv >= 0.9, Python 3.12)
 ```
 
-## 2. 安装 harbor
+## 2. Install harbor
 
-`frontier harbor trial` 内部会调用外部 `harbor` CLI,装一下即可:
+`frontier harbor trial` calls the external `harbor` CLI under the hood, so install it:
 
 ```bash
-uv tool install harbor      # v0.18.0,装到 ~/.local/bin
+uv tool install harbor      # v0.18.0, installed to ~/.local/bin
 ```
 
 ## 3. Docker
 
-确保 **Docker Desktop(macOS)/ docker daemon(Linux)已启动** —— 每个 trial 在容器里跑。
+Make sure **Docker Desktop (macOS) / the docker daemon (Linux) is running** — each trial
+runs inside a container.
 
-## 4. OpenAI Key
+## 4. OpenAI key
 
-在 repo 根目录 `.env` 里放(已 gitignore):
+Put your key in `.env` at the repo root (already gitignored):
 
 ```
-OPENAI_API_KEY=sk-你的key
+OPENAI_API_KEY=sk-your-key
 ```
 
-## 5. 运行
+## 5. Run
 
-### 5a. 冒烟测试(单题,验证环境;留空 key 不花 token)
+### 5a. Smoke test (single problem, verify the environment; empty key = no tokens spent)
 
-agent 会在首次调用 OpenAI 时失败退出,只验证 Docker / task 生成 / harbor 链路是否通:
+The agent fails fast at its first OpenAI call, so this only verifies the
+Docker / task-generation / harbor pipeline:
 
 ```bash
 OPENAI_API_KEY="" uv run --no-sync frontier harbor trial algorithmic 0 \
@@ -46,9 +49,9 @@ OPENAI_API_KEY="" uv run --no-sync frontier harbor trial algorithmic 0 \
   --agent-kwarg reasoning_effort=high --agent-timeout 120 --json
 ```
 
-看到最后输出一段带 `"trial_status": "scored"` 的 JSON 即环境 OK。
+A final JSON blob containing `"trial_status": "scored"` means the environment is OK.
 
-### 5b. 完整评测(全部题目,后台)
+### 5b. Full evaluation (all problems, in the background)
 
 ```bash
 nohup python3 runs/codex-gpt55/run.py > runs/codex-gpt55/run.out 2>&1 &
@@ -57,41 +60,41 @@ tail -f runs/codex-gpt55/run.out
 
 ---
 
-## 6. 输出 & 断点续跑
+## 6. Outputs & resuming
 
-写在 `runs/codex-gpt55/`:
-- `results.jsonl` —— 每题一行结果(reward / score / tokens / trial_dir / …)
-- `logs/algorithmic_<id>.log` —— 每题 Harbor stdout
-- `heartbeat.txt` / `run.pid` —— 运行状态
-- Harbor trial 目录在 `<repo>/.frontier-cs/harbor/trials/`
+Written under `runs/codex-gpt55/`:
+- `results.jsonl` — one line per problem (reward / score / tokens / trial_dir / …)
+- `logs/algorithmic_<id>.log` — per-problem Harbor stdout
+- `heartbeat.txt` / `run.pid` — run state
+- Harbor trial dirs live under `<repo>/.frontier-cs/harbor/trials/`
 
-**断点续跑**:重启脚本时,已 `scored`(reward 非空且 status=scored)的题自动跳过,
-失败的会重试。再跑一次 `nohup python3 ... &` 即可接着来。
+**Resuming**: on restart, problems already `scored` (reward present and status=scored) are
+skipped; failed ones are retried. Just launch `nohup python3 ... &` again to continue.
 
-## 7. 常用参数(`run.py` 顶部 config 区)
+## 7. Common settings (config block at the top of `run.py`)
 
-| 变量 | 默认 | 含义 |
+| Variable | Default | Meaning |
 |---|---|---|
-| `MODEL` | `openai/gpt-5.5` | 模型 |
+| `MODEL` | `openai/gpt-5.5` | model |
 | `AGENT` | `codex` | agent |
-| `TRACK` | `algorithmic` | 赛道(也可 `2.0`) |
-| `CONCURRENCY` | `3` | 同时跑几道题;高了更快但更吃 API/内存 |
-| `AGENT_TIMEOUT` | `18000`(5h) | 每题 agent 执行上限 |
-| `AGENT_KWARGS` | `reasoning_effort=high, reasoning_summary=detailed` | 转发给 codex 的调参 |
-| `PROBLEMS` | `None`(全部) | 只跑某几题就填 id 列表,如 `["0","257"]` |
+| `TRACK` | `algorithmic` | track (can also be `2.0`) |
+| `CONCURRENCY` | `3` | trials in parallel; higher = faster but more API/memory load |
+| `AGENT_TIMEOUT` | `18000` (5h) | per-problem agent execution ceiling |
+| `AGENT_KWARGS` | `reasoning_effort=high, reasoning_summary=detailed` | kwargs forwarded to codex |
+| `PROBLEMS` | `None` (all) | set an id list to run only some, e.g. `["0","257"]` |
 
 ---
 
-## 附:一页速通
+## Appendix: one-page quickstart
 
 ```bash
 git clone -b codex-gpt55-sweep https://github.com/whuang369/Frontier-CS.git FrontierCS && cd FrontierCS
 uv sync
 uv tool install harbor
 echo 'OPENAI_API_KEY=sk-...' >> .env
-# 冒烟测试(不花钱):
+# Smoke test (no tokens spent):
 OPENAI_API_KEY="" uv run --no-sync frontier harbor trial algorithmic 0 -a codex -m openai/gpt-5.5 --uv --agent-kwarg reasoning_effort=high --agent-timeout 120 --json
-# 完整跑:
+# Full run:
 nohup python3 runs/codex-gpt55/run.py > runs/codex-gpt55/run.out 2>&1 &
 tail -f runs/codex-gpt55/run.out
 ```
