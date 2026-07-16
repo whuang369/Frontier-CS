@@ -1607,6 +1607,24 @@ def _run_harbor_command_live(
     return process.returncode or 0, "".join(stdout_parts)
 
 
+def _load_dotenv_into(env: dict[str, str], path: Path) -> None:
+    """Merge KEY=VALUE lines from a repo-root .env file into env, so that
+    `frontier harbor trial` works standalone — picking up OPENAI_API_KEY /
+    OPENAI_BASE_URL / CODEX_WIRE_API without a manual `source .env` (previously
+    only run.py read .env). Existing env vars win, so an already-exported value
+    or a `--env` override always beats the .env file."""
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip(), value.strip()
+        if key and key not in env:
+            env[key] = value
+
+
 def run_harbor(args: argparse.Namespace) -> int:
     """Run Harbor wrapper commands."""
     if args.harbor_command != "trial":
@@ -1664,6 +1682,9 @@ def run_harbor(args: argparse.Namespace) -> int:
         command.append("--delete")
 
     env = os.environ.copy()
+    # Load repo-root .env so `frontier harbor trial` works standalone (previously
+    # only run.py read .env). Existing env vars and --env overrides still win.
+    _load_dotenv_into(env, _repo_root() / ".env")
     try:
         env.update(_parse_harbor_env(args.env))
     except ValueError as exc:
